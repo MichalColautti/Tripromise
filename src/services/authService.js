@@ -1,19 +1,30 @@
-const MOCK_DELAY_MS = 600;
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
+} from 'firebase/auth';
+import { auth } from './firebase';
 
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function toAppUser(user) {
+  return {
+    id: user.uid,
+    name: user.displayName ?? '',
+    email: user.email,
+  };
 }
 
 export async function logIn(email, password) {
-  await wait(MOCK_DELAY_MS);
-  return { id: 'demo-user', name: 'Alex', email: email.trim() };
+  const { user } = await signInWithEmailAndPassword(auth, email.trim(), password);
+  return toAppUser(user);
 }
 
 export async function register({ name, email, password }) {
-  await wait(MOCK_DELAY_MS);
-  return { id: 'demo-user', name: name.trim(), email: email.trim() };
+  const { user } = await createUserWithEmailAndPassword(auth, email.trim(), password);
+  await updateProfile(user, { displayName: name.trim() });
+  return toAppUser(user);
 }
 
 export async function sendPasswordReset(email) {
-  await wait(MOCK_DELAY_MS);
+  await sendPasswordResetEmail(auth, email.trim());
 }
