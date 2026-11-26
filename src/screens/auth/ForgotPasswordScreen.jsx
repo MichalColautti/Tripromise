@@ -8,6 +8,7 @@ import TextField from '../../components/TextField';
 import TextLink from '../../components/TextLink';
 import { spacing } from '../../constants/theme';
 import { sendPasswordReset } from '../../services/authService';
+import { getPasswordResetErrorMessage } from '../../utils/authErrors';
 import { validateEmail } from '../../utils/validation';
 
 export default function ForgotPasswordScreen({ navigation, route }) {
@@ -16,6 +17,10 @@ export default function ForgotPasswordScreen({ navigation, route }) {
   const [loading, setLoading] = useState(false);
 
   const handleSend = async () => {
+    if (loading) {
+      return;
+    }
+
     const emailError = validateEmail(email);
     setError(emailError);
     if (emailError) {
@@ -26,8 +31,8 @@ export default function ForgotPasswordScreen({ navigation, route }) {
     try {
       await sendPasswordReset(email);
       navigation.replace('ResetLinkSent', { email: email.trim() });
-    } catch {
-      setError('Could not send the link. Try again.');
+    } catch (resetError) {
+      setError(getPasswordResetErrorMessage(resetError));
       setLoading(false);
     }
   };
@@ -43,7 +48,12 @@ export default function ForgotPasswordScreen({ navigation, route }) {
       <TextField
         label="Email address"
         value={email}
-        onChangeText={setEmail}
+        onChangeText={(value) => {
+          setEmail(value);
+          if (error) {
+            setError(null);
+          }
+        }}
         error={error}
         placeholder="alex@example.com"
         keyboardType="email-address"
