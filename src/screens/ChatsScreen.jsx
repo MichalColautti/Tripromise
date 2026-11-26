@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   Pressable,
@@ -11,6 +11,15 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, fonts } from "../constants/theme";
+import useAuth from "../hooks/useAuth";
+import {
+  respondToFriendRequest as updateFriendRequest,
+  searchUsers,
+  sendFriendRequest as createFriendRequest,
+  syncUserProfile,
+  subscribeFriends,
+  subscribeIncomingFriendRequests,
+} from "../services/friendService";
 
 const tripChats = [
   {
@@ -63,55 +72,6 @@ const recentConversations = [
     preview: "I’ll share the route tonight",
     time: "1h",
     unread: false,
-  },
-];
-
-const otherFriends = [
-  { id: "maya", initials: "MP", name: "Maya Patel", location: "Bristol, UK" },
-  { id: "theo", initials: "TM", name: "Theo Martin", location: "London, UK" },
-];
-
-const suggestedTravelers = [
-  {
-    id: "anna",
-    initials: "AK",
-    name: "Anna Kowalska",
-    location: "Kraków, Poland",
-    destinations: "France, Italy, Spain, Germany",
-    detail: "Visited 9 countries",
-  },
-  {
-    id: "priya",
-    initials: "PS",
-    name: "Priya Shah",
-    location: "London, UK",
-    destinations: "Japan, Thailand, India",
-    detail: "3 shared destinations",
-  },
-  {
-    id: "oliver",
-    initials: "OB",
-    name: "Oliver Berg",
-    location: "Berlin, Germany",
-    destinations: "Italy, Austria, Switzerland",
-    detail: "Request sent 2 days ago",
-  },
-];
-
-const initialFriendRequests = [
-  {
-    id: "emma",
-    initials: "EW",
-    name: "Emma Wilson",
-    location: "Manchester, UK",
-    detail: "8 trips · 12 mutual friends",
-  },
-  {
-    id: "leo",
-    initials: "LC",
-    name: "Leo Chen",
-    location: "Singapore, Singapore",
-    detail: "Planning a spring trip through Europe",
   },
 ];
 
@@ -206,7 +166,17 @@ function OtherFriendCard({ friend }) {
   );
 }
 
-function SuggestedTravelerCard({ traveler, isPending, onAddFriend }) {
+function SuggestedTravelerCard({
+  traveler,
+  isSending,
+  onAddFriend,
+  onViewRequest,
+}) {
+  const isPending = traveler.requestStatus === "pending";
+  const isAccepted = traveler.requestStatus === "accepted";
+  const hasIncomingRequest = traveler.requestStatus === "incoming";
+  const isDisabled = isSending || isPending || isAccepted;
+
   return (
     <View style={styles.suggestedCard}>
       <FriendAvatar initials={traveler.initials} large />
@@ -225,20 +195,39 @@ function SuggestedTravelerCard({ traveler, isPending, onAddFriend }) {
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityState={{ disabled: isPending }}
-        disabled={isPending}
-        onPress={() => onAddFriend(traveler.id)}
-        style={[styles.addFriendAction, isPending && styles.pendingAction]}
+        accessibilityState={{ disabled: isDisabled }}
+        disabled={isDisabled}
+        onPress={() =>
+          hasIncomingRequest ? onViewRequest() : onAddFriend(traveler.id)
+        }
+        style={[
+          styles.addFriendAction,
+          (isPending || isAccepted) && styles.pendingAction,
+          isSending && styles.disabledAction,
+        ]}
       >
-        <Text style={[styles.addFriendActionLabel, isPending && styles.pendingLabel]}>
-          {isPending ? "Pending" : "Add friend"}
+        <Text
+          style={[
+            styles.addFriendActionLabel,
+            (isPending || isAccepted) && styles.pendingLabel,
+          ]}
+        >
+          {isSending
+            ? "Sending"
+            : isPending
+              ? "Pending"
+              : isAccepted
+                ? "Friends"
+                : hasIncomingRequest
+                  ? "View request"
+                  : "Add friend"}
         </Text>
       </Pressable>
     </View>
   );
 }
 
-function FriendRequestCard({ request, onAccept, onDecline }) {
+function FriendRequestCard({ request, onAccept, onDecline, isBusy }) {
   return (
     <View style={styles.friendRequestCard}>
       <View style={styles.requestPersonRow}>
@@ -254,15 +243,17 @@ function FriendRequestCard({ request, onAccept, onDecline }) {
       <View style={styles.requestActions}>
         <Pressable
           accessibilityRole="button"
+          disabled={isBusy}
           onPress={() => onAccept(request.id)}
-          style={styles.acceptButton}
+          style={[styles.acceptButton, isBusy && styles.disabledAction]}
         >
           <Text style={styles.acceptButtonLabel}>Accept</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
+          disabled={isBusy}
           onPress={() => onDecline(request.id)}
-          style={styles.declineButton}
+          style={[styles.declineButton, isBusy && styles.disabledAction]}
         >
           <Text style={styles.declineButtonLabel}>Decline</Text>
         </Pressable>
@@ -272,38 +263,121 @@ function FriendRequestCard({ request, onAccept, onDecline }) {
 }
 
 export default function ChatsScreen() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("Trips");
   const [currentView, setCurrentView] = useState("chats");
   const [searchQuery, setSearchQuery] = useState("");
-  const [pendingIds, setPendingIds] = useState(["oliver"]);
-  const [friendRequests, setFriendRequests] = useState(initialFriendRequests);
-  const [friends, setFriends] = useState(otherFriends);
+  const [travelerResults, setTravelerResults] = useState([]);
+  const [friendRequests, setFriendRequests] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [sendingIds, setSendingIds] = useState([]);
+  const [respondingIds, setRespondingIds] = useState([]);
+  const [isLoadingTravelers, setIsLoadingTravelers] = useState(false);
+  const [friendRequestsLoaded, setFriendRequestsLoaded] = useState(false);
+  const [relationshipError, setRelationshipError] = useState("");
+  const [searchError, setSearchError] = useState("");
 
-  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
-  const filteredTravelers = suggestedTravelers.filter((traveler) =>
-    [traveler.name, traveler.location, traveler.destinations].some((value) =>
-      value.toLocaleLowerCase().includes(normalizedQuery),
-    ),
-  );
+  useEffect(() => {
+    if (!user?.id) return undefined;
 
-  const sendFriendRequest = (travelerId) => {
-    setPendingIds((currentPendingIds) => [...currentPendingIds, travelerId]);
+    let isActive = true;
+    let unsubscribeRequests = () => {};
+    let unsubscribeFriends = () => {};
+
+    const handleRelationshipError = () => {
+      setRelationshipError("We couldn’t load friend data. Please try again.");
+      setFriendRequestsLoaded(true);
+    };
+
+    const startSubscriptions = async () => {
+      try {
+        await syncUserProfile(user);
+        if (!isActive) return;
+
+        setFriendRequestsLoaded(false);
+        setRelationshipError("");
+        unsubscribeRequests = subscribeIncomingFriendRequests(
+          user.id,
+          (requests) => {
+            setFriendRequests(requests);
+            setFriendRequestsLoaded(true);
+          },
+          handleRelationshipError,
+        );
+        unsubscribeFriends = subscribeFriends(
+          user.id,
+          setFriends,
+          handleRelationshipError,
+        );
+      } catch {
+        handleRelationshipError();
+      }
+    };
+
+    startSubscriptions();
+
+    return () => {
+      isActive = false;
+      unsubscribeRequests();
+      unsubscribeFriends();
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (currentView !== "addFriends" || !user?.id) return undefined;
+
+    let isActive = true;
+    const timeout = setTimeout(async () => {
+      setSearchError("");
+      setIsLoadingTravelers(true);
+      try {
+        const results = await searchUsers(user.id, searchQuery);
+        if (isActive) setTravelerResults(results);
+      } catch {
+        if (isActive) {
+          setTravelerResults([]);
+          setSearchError("Couldn’t load travelers. Please try again.");
+        }
+      } finally {
+        if (isActive) setIsLoadingTravelers(false);
+      }
+    }, searchQuery.trim() ? 300 : 0);
+
+    return () => {
+      isActive = false;
+      clearTimeout(timeout);
+    };
+  }, [currentView, searchQuery, user?.id]);
+
+  const sendFriendRequest = async (travelerId) => {
+    if (!user?.id) return;
+
+    setSendingIds((currentIds) => [...currentIds, travelerId]);
+    setSearchError("");
+    try {
+      const requestStatus = await createFriendRequest(user.id, travelerId);
+      setTravelerResults((currentResults) =>
+        currentResults.map((traveler) =>
+          traveler.id === travelerId ? { ...traveler, requestStatus } : traveler,
+        ),
+      );
+    } catch {
+      setSearchError("Couldn’t send the friend request. Please try again.");
+    } finally {
+      setSendingIds((currentIds) => currentIds.filter((id) => id !== travelerId));
+    }
   };
 
-  const respondToFriendRequest = (requestId, accepted) => {
-    const request = friendRequests.find((friendRequest) => friendRequest.id === requestId);
-
-    if (accepted && request) {
-      setFriends((currentFriends) =>
-        currentFriends.some((friend) => friend.id === request.id)
-          ? currentFriends
-          : [...currentFriends, request],
-      );
+  const respondToFriendRequest = async (requestId, accepted) => {
+    setRespondingIds((currentIds) => [...currentIds, requestId]);
+    setRelationshipError("");
+    try {
+      await updateFriendRequest(requestId, accepted ? "accepted" : "declined");
+    } catch {
+      setRelationshipError("Couldn’t update this request. Please try again.");
+    } finally {
+      setRespondingIds((currentIds) => currentIds.filter((id) => id !== requestId));
     }
-
-    setFriendRequests((currentRequests) =>
-      currentRequests.filter((friendRequest) => friendRequest.id !== requestId),
-    );
   };
 
   return (
@@ -327,16 +401,16 @@ export default function ChatsScreen() {
           </View>
 
           <Text style={styles.addFriendsSubtitle}>
-            Find people to plan your next trip with.
+            Find Tripromise travelers by name.
           </Text>
 
           <View style={styles.searchBox}>
             <Ionicons name="search-outline" size={22} color={colors.textMuted} />
             <TextInput
-              accessibilityLabel="Search by name, city or destination"
+              accessibilityLabel="Search by name"
               autoCorrect={false}
               onChangeText={setSearchQuery}
-              placeholder="Search by name, city or destination"
+              placeholder="Search by name"
               placeholderTextColor={colors.textMuted}
               returnKeyType="search"
               style={styles.searchInput}
@@ -350,23 +424,29 @@ export default function ChatsScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.suggestedSectionTitle}>Suggested travelers</Text>
+            <Text style={styles.suggestedSectionTitle}>Travelers on Tripromise</Text>
             <Text style={styles.suggestedSectionSubtitle}>
-              Based on location and trips
+              Registered users
             </Text>
+            {searchError ? (
+              <Text style={styles.searchError}>{searchError}</Text>
+            ) : null}
             <View style={styles.suggestedCards}>
-              {filteredTravelers.length > 0 ? (
-                filteredTravelers.map((traveler) => (
+              {isLoadingTravelers ? (
+                <Text style={styles.noSuggestions}>Loading travelers…</Text>
+              ) : searchError ? null : travelerResults.length > 0 ? (
+                travelerResults.map((traveler) => (
                   <SuggestedTravelerCard
                     key={traveler.id}
                     traveler={traveler}
-                    isPending={pendingIds.includes(traveler.id)}
+                    isSending={sendingIds.includes(traveler.id)}
                     onAddFriend={sendFriendRequest}
+                    onViewRequest={() => setCurrentView("friendRequests")}
                   />
                 ))
               ) : (
                 <Text style={styles.noSuggestions}>
-                  No travelers found. Try another name or destination.
+                  No travelers found. Try another name.
                 </Text>
               )}
             </View>
@@ -387,9 +467,11 @@ export default function ChatsScreen() {
           </View>
 
           <Text style={styles.addFriendsSubtitle}>
-            {friendRequests.length === 0
-              ? "You’re all caught up."
-              : `${friendRequests.length} ${friendRequests.length === 1 ? "traveler would" : "travelers would"} like to connect with you.`}
+            {!friendRequestsLoaded
+              ? "Loading requests…"
+              : friendRequests.length === 0
+                ? "You’re all caught up."
+                : `${friendRequests.length} ${friendRequests.length === 1 ? "traveler would" : "travelers would"} like to connect with you.`}
           </Text>
 
           <ScrollView
@@ -397,7 +479,11 @@ export default function ChatsScreen() {
             contentContainerStyle={styles.requestListContent}
             showsVerticalScrollIndicator={false}
           >
-            {friendRequests.length > 0 ? (
+            {relationshipError ? (
+              <Text style={styles.relationshipError}>{relationshipError}</Text>
+            ) : !friendRequestsLoaded ? (
+              <Text style={styles.noSuggestions}>Loading requests…</Text>
+            ) : friendRequests.length > 0 ? (
               <>
                 <View style={styles.requestCards}>
                   {friendRequests.map((request) => (
@@ -406,6 +492,7 @@ export default function ChatsScreen() {
                       request={request}
                       onAccept={(id) => respondToFriendRequest(id, true)}
                       onDecline={(id) => respondToFriendRequest(id, false)}
+                      isBusy={respondingIds.includes(request.id)}
                     />
                   ))}
                 </View>
@@ -485,7 +572,9 @@ export default function ChatsScreen() {
                   <View style={styles.requestsContent}>
                     <Text style={styles.requestsTitle}>Friend requests</Text>
                     <Text style={styles.requestsSubtitle}>
-                      {friendRequests.length} waiting for you
+                      {friendRequestsLoaded
+                        ? `${friendRequests.length} waiting for you`
+                        : "Loading requests"}
                     </Text>
                   </View>
                   <View style={styles.requestCount}>
@@ -514,9 +603,15 @@ export default function ChatsScreen() {
                     Other friends
                   </Text>
                   <View style={styles.friendsList}>
-                    {friends.map((friend) => (
-                      <OtherFriendCard key={friend.id} friend={friend} />
-                    ))}
+                    {friends.length > 0 ? (
+                      friends.map((friend) => (
+                        <OtherFriendCard key={friend.id} friend={friend} />
+                      ))
+                    ) : (
+                      <Text style={styles.emptyFriends}>
+                        No friends yet. Find a traveler to connect with.
+                      </Text>
+                    )}
                   </View>
                 </View>
 
@@ -716,6 +811,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     textAlign: "center",
+  },
+  searchError: {
+    marginTop: 10,
+    color: colors.error,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  relationshipError: {
+    paddingVertical: 20,
+    color: colors.error,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: "center",
+  },
+  emptyFriends: {
+    paddingVertical: 10,
+    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  disabledAction: {
+    opacity: 0.6,
   },
   screenHeading: {
     marginTop: 20,
