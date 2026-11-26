@@ -98,6 +98,23 @@ const suggestedTravelers = [
   },
 ];
 
+const initialFriendRequests = [
+  {
+    id: "emma",
+    initials: "EW",
+    name: "Emma Wilson",
+    location: "Manchester, UK",
+    detail: "8 trips · 12 mutual friends",
+  },
+  {
+    id: "leo",
+    initials: "LC",
+    name: "Leo Chen",
+    location: "Singapore, Singapore",
+    detail: "Planning a spring trip through Europe",
+  },
+];
+
 const tabs = ["Trips", "Friends"];
 
 function TripChatCard({ chat }) {
@@ -130,10 +147,22 @@ function TripChatCard({ chat }) {
   );
 }
 
-function FriendAvatar({ initials, large = false }) {
+function FriendAvatar({ initials, large = false, request = false }) {
   return (
-    <View style={[styles.friendAvatar, large && styles.suggestedAvatar]}>
-      <Text style={[styles.friendInitials, large && styles.suggestedInitials]}>
+    <View
+      style={[
+        styles.friendAvatar,
+        large && styles.suggestedAvatar,
+        request && styles.requestAvatar,
+      ]}
+    >
+      <Text
+        style={[
+          styles.friendInitials,
+          large && styles.suggestedInitials,
+          request && styles.requestInitials,
+        ]}
+      >
         {initials}
       </Text>
     </View>
@@ -209,11 +238,46 @@ function SuggestedTravelerCard({ traveler, isPending, onAddFriend }) {
   );
 }
 
+function FriendRequestCard({ request, onAccept, onDecline }) {
+  return (
+    <View style={styles.friendRequestCard}>
+      <View style={styles.requestPersonRow}>
+        <FriendAvatar initials={request.initials} request />
+        <View style={styles.requestPersonInfo}>
+          <Text style={styles.requestName}>{request.name}</Text>
+          <Text style={styles.requestLocation}>{request.location}</Text>
+        </View>
+      </View>
+
+      <Text style={styles.requestDetails}>{request.detail}</Text>
+
+      <View style={styles.requestActions}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => onAccept(request.id)}
+          style={styles.acceptButton}
+        >
+          <Text style={styles.acceptButtonLabel}>Accept</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => onDecline(request.id)}
+          style={styles.declineButton}
+        >
+          <Text style={styles.declineButtonLabel}>Decline</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export default function ChatsScreen() {
   const [activeTab, setActiveTab] = useState("Trips");
   const [currentView, setCurrentView] = useState("chats");
   const [searchQuery, setSearchQuery] = useState("");
   const [pendingIds, setPendingIds] = useState(["oliver"]);
+  const [friendRequests, setFriendRequests] = useState(initialFriendRequests);
+  const [friends, setFriends] = useState(otherFriends);
 
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
   const filteredTravelers = suggestedTravelers.filter((traveler) =>
@@ -224,6 +288,22 @@ export default function ChatsScreen() {
 
   const sendFriendRequest = (travelerId) => {
     setPendingIds((currentPendingIds) => [...currentPendingIds, travelerId]);
+  };
+
+  const respondToFriendRequest = (requestId, accepted) => {
+    const request = friendRequests.find((friendRequest) => friendRequest.id === requestId);
+
+    if (accepted && request) {
+      setFriends((currentFriends) =>
+        currentFriends.some((friend) => friend.id === request.id)
+          ? currentFriends
+          : [...currentFriends, request],
+      );
+    }
+
+    setFriendRequests((currentRequests) =>
+      currentRequests.filter((friendRequest) => friendRequest.id !== requestId),
+    );
   };
 
   return (
@@ -292,6 +372,61 @@ export default function ChatsScreen() {
             </View>
           </ScrollView>
         </>
+      ) : currentView === "friendRequests" ? (
+        <>
+          <View style={styles.addFriendsHeader}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back to friends"
+              onPress={() => setCurrentView("chats")}
+              style={styles.backButton}
+            >
+              <Ionicons name="chevron-back" size={22} color={colors.text} />
+            </Pressable>
+            <Text style={styles.addFriendsHeading}>Friend requests</Text>
+          </View>
+
+          <Text style={styles.addFriendsSubtitle}>
+            {friendRequests.length === 0
+              ? "You’re all caught up."
+              : `${friendRequests.length} ${friendRequests.length === 1 ? "traveler would" : "travelers would"} like to connect with you.`}
+          </Text>
+
+          <ScrollView
+            style={styles.requestList}
+            contentContainerStyle={styles.requestListContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {friendRequests.length > 0 ? (
+              <>
+                <View style={styles.requestCards}>
+                  {friendRequests.map((request) => (
+                    <FriendRequestCard
+                      key={request.id}
+                      request={request}
+                      onAccept={(id) => respondToFriendRequest(id, true)}
+                      onDecline={(id) => respondToFriendRequest(id, false)}
+                    />
+                  ))}
+                </View>
+                <Text style={styles.requestFooter}>
+                  Accept requests to share plans and messages with your new travel friends.
+                </Text>
+              </>
+            ) : (
+              <View style={styles.emptyRequests}>
+                <View style={styles.emptyRequestsIcon}>
+                  <Ionicons
+                    name="people-outline"
+                    size={24}
+                    color={colors.link}
+                  />
+                </View>
+                <Text style={styles.emptyRequestsTitle}>No new requests</Text>
+              </View>
+            )}
+          </ScrollView>
+        </>
       ) : (
         <>
           <View style={styles.screenHeading}>
@@ -338,19 +473,26 @@ export default function ChatsScreen() {
               </>
             ) : (
               <>
-                <View style={styles.requestsBanner}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Friend requests, ${friendRequests.length} waiting`}
+                  onPress={() => setCurrentView("friendRequests")}
+                  style={styles.requestsBanner}
+                >
                   <View style={styles.requestsIcon}>
                     <Ionicons name="person-add-outline" size={20} color={colors.link} />
                   </View>
                   <View style={styles.requestsContent}>
                     <Text style={styles.requestsTitle}>Friend requests</Text>
-                    <Text style={styles.requestsSubtitle}>2 waiting for you</Text>
+                    <Text style={styles.requestsSubtitle}>
+                      {friendRequests.length} waiting for you
+                    </Text>
                   </View>
                   <View style={styles.requestCount}>
-                    <Text style={styles.requestCountText}>2</Text>
+                    <Text style={styles.requestCountText}>{friendRequests.length}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={colors.link} />
-                </View>
+                </Pressable>
 
                 <View style={styles.friendsSection}>
                   <View style={styles.sectionTitleRow}>
@@ -372,7 +514,7 @@ export default function ChatsScreen() {
                     Other friends
                   </Text>
                   <View style={styles.friendsList}>
-                    {otherFriends.map((friend) => (
+                    {friends.map((friend) => (
                       <OtherFriendCard key={friend.id} friend={friend} />
                     ))}
                   </View>
@@ -738,6 +880,127 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 14,
     backgroundColor: "#E8F1EE",
+  },
+  requestList: {
+    flex: 1,
+    marginTop: 34,
+  },
+  requestListContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+  },
+  requestCards: {
+    gap: 14,
+  },
+  friendRequestCard: {
+    minHeight: 160,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    shadowColor: "#173D33",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.045,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  requestPersonRow: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  requestAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  requestInitials: {
+    fontSize: 13,
+  },
+  requestPersonInfo: {
+    flex: 1,
+  },
+  requestName: {
+    color: colors.text,
+    fontFamily: fonts.semiBold,
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  requestLocation: {
+    marginTop: 1,
+    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  requestDetails: {
+    marginTop: 10,
+    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  requestActions: {
+    marginTop: 12,
+    flexDirection: "row",
+    gap: 12,
+  },
+  acceptButton: {
+    flex: 1,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+  },
+  acceptButtonLabel: {
+    color: colors.surface,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+  },
+  declineButton: {
+    flex: 1,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+  },
+  declineButtonLabel: {
+    color: colors.text,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+  },
+  requestFooter: {
+    marginTop: 24,
+    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  emptyRequests: {
+    minHeight: 220,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+  },
+  emptyRequestsIcon: {
+    width: 52,
+    height: 52,
+    marginBottom: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 26,
+    backgroundColor: "#D9EEE8",
+  },
+  emptyRequestsTitle: {
+    color: colors.text,
+    fontFamily: fonts.semiBold,
+    fontSize: 15,
   },
   requestsIcon: {
     width: 40,
