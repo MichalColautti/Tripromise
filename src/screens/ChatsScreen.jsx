@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -70,6 +71,33 @@ const otherFriends = [
   { id: "theo", initials: "TM", name: "Theo Martin", location: "London, UK" },
 ];
 
+const suggestedTravelers = [
+  {
+    id: "anna",
+    initials: "AK",
+    name: "Anna Kowalska",
+    location: "Kraków, Poland",
+    destinations: "France, Italy, Spain, Germany",
+    detail: "Visited 9 countries",
+  },
+  {
+    id: "priya",
+    initials: "PS",
+    name: "Priya Shah",
+    location: "London, UK",
+    destinations: "Japan, Thailand, India",
+    detail: "3 shared destinations",
+  },
+  {
+    id: "oliver",
+    initials: "OB",
+    name: "Oliver Berg",
+    location: "Berlin, Germany",
+    destinations: "Italy, Austria, Switzerland",
+    detail: "Request sent 2 days ago",
+  },
+];
+
 const tabs = ["Trips", "Friends"];
 
 function TripChatCard({ chat }) {
@@ -102,10 +130,12 @@ function TripChatCard({ chat }) {
   );
 }
 
-function FriendAvatar({ initials }) {
+function FriendAvatar({ initials, large = false }) {
   return (
-    <View style={styles.friendAvatar}>
-      <Text style={styles.friendInitials}>{initials}</Text>
+    <View style={[styles.friendAvatar, large && styles.suggestedAvatar]}>
+      <Text style={[styles.friendInitials, large && styles.suggestedInitials]}>
+        {initials}
+      </Text>
     </View>
   );
 }
@@ -147,8 +177,54 @@ function OtherFriendCard({ friend }) {
   );
 }
 
+function SuggestedTravelerCard({ traveler, isPending, onAddFriend }) {
+  return (
+    <View style={styles.suggestedCard}>
+      <FriendAvatar initials={traveler.initials} large />
+      <View style={styles.suggestedContent}>
+        <Text numberOfLines={1} style={styles.suggestedName}>
+          {traveler.name}
+        </Text>
+        <Text numberOfLines={1} style={styles.suggestedLocation}>
+          {traveler.location}
+        </Text>
+        <Text numberOfLines={1} style={styles.suggestedDetail}>
+          {isPending && traveler.id !== "oliver"
+            ? "Request sent just now"
+            : traveler.detail}
+        </Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled: isPending }}
+        disabled={isPending}
+        onPress={() => onAddFriend(traveler.id)}
+        style={[styles.addFriendAction, isPending && styles.pendingAction]}
+      >
+        <Text style={[styles.addFriendActionLabel, isPending && styles.pendingLabel]}>
+          {isPending ? "Pending" : "Add friend"}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export default function ChatsScreen() {
   const [activeTab, setActiveTab] = useState("Trips");
+  const [currentView, setCurrentView] = useState("chats");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [pendingIds, setPendingIds] = useState(["oliver"]);
+
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+  const filteredTravelers = suggestedTravelers.filter((traveler) =>
+    [traveler.name, traveler.location, traveler.destinations].some((value) =>
+      value.toLocaleLowerCase().includes(normalizedQuery),
+    ),
+  );
+
+  const sendFriendRequest = (travelerId) => {
+    setPendingIds((currentPendingIds) => [...currentPendingIds, travelerId]);
+  };
 
   return (
     <SafeAreaView edges={["top"]} style={styles.safeArea}>
@@ -156,97 +232,172 @@ export default function ChatsScreen() {
         <Text style={styles.brand}>Tripromise</Text>
       </View>
 
-      <View style={styles.screenHeading}>
-        <Text style={styles.heading}>Chats</Text>
-      </View>
-
-      <View style={styles.tabs} accessibilityRole="tablist">
-        {tabs.map((tab) => {
-          const selected = activeTab === tab;
-          return (
+      {currentView === "addFriends" ? (
+        <>
+          <View style={styles.addFriendsHeader}>
             <Pressable
-              key={tab}
-              accessibilityRole="tab"
-              accessibilityState={{ selected }}
-              onPress={() => setActiveTab(tab)}
-              style={[styles.tab, selected && styles.selectedTab]}
+              accessibilityRole="button"
+              accessibilityLabel="Back to friends"
+              onPress={() => setCurrentView("chats")}
+              style={styles.backButton}
             >
-              <Text style={[styles.tabLabel, selected && styles.selectedTabLabel]}>
-                {tab}
-              </Text>
+              <Ionicons name="chevron-back" size={22} color={colors.text} />
             </Pressable>
-          );
-        })}
-      </View>
+            <Text style={styles.addFriendsHeading}>Add friends</Text>
+          </View>
 
-      <ScrollView
-        style={styles.list}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {activeTab === "Trips" ? (
-          <>
-            <Text style={styles.sectionLabel}>Trip groups</Text>
-            <View style={styles.chatList}>
-              {tripChats.map((chat) => (
-                <TripChatCard key={chat.id} chat={chat} />
-              ))}
-            </View>
-            <View style={styles.infoBanner}>
-              <Text style={styles.infoText}>
-                Group chats appear automatically when travelers join a trip.
-              </Text>
-            </View>
-          </>
-        ) : (
-          <>
-            <View style={styles.requestsBanner}>
-              <View style={styles.requestsIcon}>
-                <Ionicons name="person-add-outline" size={20} color={colors.link} />
-              </View>
-              <View style={styles.requestsContent}>
-                <Text style={styles.requestsTitle}>Friend requests</Text>
-                <Text style={styles.requestsSubtitle}>2 waiting for you</Text>
-              </View>
-              <View style={styles.requestCount}>
-                <Text style={styles.requestCountText}>2</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.link} />
-            </View>
+          <Text style={styles.addFriendsSubtitle}>
+            Find people to plan your next trip with.
+          </Text>
 
-            <View style={styles.friendsSection}>
-              <View style={styles.sectionTitleRow}>
-                <Text style={styles.friendsSectionTitle}>Recent conversations</Text>
-                <Text style={styles.seeAll}>See all</Text>
-              </View>
-              <View style={styles.friendsList}>
-                {recentConversations.map((conversation) => (
-                  <RecentConversationCard
-                    key={conversation.id}
-                    conversation={conversation}
+          <View style={styles.searchBox}>
+            <Ionicons name="search-outline" size={22} color={colors.textMuted} />
+            <TextInput
+              accessibilityLabel="Search by name, city or destination"
+              autoCorrect={false}
+              onChangeText={setSearchQuery}
+              placeholder="Search by name, city or destination"
+              placeholderTextColor={colors.textMuted}
+              returnKeyType="search"
+              style={styles.searchInput}
+              value={searchQuery}
+            />
+          </View>
+
+          <ScrollView
+            style={styles.suggestedList}
+            contentContainerStyle={styles.suggestedListContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.suggestedSectionTitle}>Suggested travelers</Text>
+            <Text style={styles.suggestedSectionSubtitle}>
+              Based on location and trips
+            </Text>
+            <View style={styles.suggestedCards}>
+              {filteredTravelers.length > 0 ? (
+                filteredTravelers.map((traveler) => (
+                  <SuggestedTravelerCard
+                    key={traveler.id}
+                    traveler={traveler}
+                    isPending={pendingIds.includes(traveler.id)}
+                    onAddFriend={sendFriendRequest}
                   />
-                ))}
-              </View>
+                ))
+              ) : (
+                <Text style={styles.noSuggestions}>
+                  No travelers found. Try another name or destination.
+                </Text>
+              )}
             </View>
+          </ScrollView>
+        </>
+      ) : (
+        <>
+          <View style={styles.screenHeading}>
+            <Text style={styles.heading}>Chats</Text>
+          </View>
 
-            <View style={styles.friendsSection}>
-              <Text style={[styles.friendsSectionTitle, styles.otherFriendsTitle]}>
-                Other friends
-              </Text>
-              <View style={styles.friendsList}>
-                {otherFriends.map((friend) => (
-                  <OtherFriendCard key={friend.id} friend={friend} />
-                ))}
-              </View>
-            </View>
+          <View style={styles.tabs} accessibilityRole="tablist">
+            {tabs.map((tab) => {
+              const selected = activeTab === tab;
+              return (
+                <Pressable
+                  key={tab}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected }}
+                  onPress={() => setActiveTab(tab)}
+                  style={[styles.tab, selected && styles.selectedTab]}
+                >
+                  <Text style={[styles.tabLabel, selected && styles.selectedTabLabel]}>
+                    {tab}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
-            <View style={styles.addFriendsButton}>
-              <Ionicons name="person-add-outline" size={20} color={colors.surface} />
-              <Text style={styles.addFriendsLabel}>Add friends</Text>
-            </View>
-          </>
-        )}
-      </ScrollView>
+          <ScrollView
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {activeTab === "Trips" ? (
+              <>
+                <Text style={styles.sectionLabel}>Trip groups</Text>
+                <View style={styles.chatList}>
+                  {tripChats.map((chat) => (
+                    <TripChatCard key={chat.id} chat={chat} />
+                  ))}
+                </View>
+                <View style={styles.infoBanner}>
+                  <Text style={styles.infoText}>
+                    Group chats appear automatically when travelers join a trip.
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.requestsBanner}>
+                  <View style={styles.requestsIcon}>
+                    <Ionicons name="person-add-outline" size={20} color={colors.link} />
+                  </View>
+                  <View style={styles.requestsContent}>
+                    <Text style={styles.requestsTitle}>Friend requests</Text>
+                    <Text style={styles.requestsSubtitle}>2 waiting for you</Text>
+                  </View>
+                  <View style={styles.requestCount}>
+                    <Text style={styles.requestCountText}>2</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.link} />
+                </View>
+
+                <View style={styles.friendsSection}>
+                  <View style={styles.sectionTitleRow}>
+                    <Text style={styles.friendsSectionTitle}>Recent conversations</Text>
+                    <Text style={styles.seeAll}>See all</Text>
+                  </View>
+                  <View style={styles.friendsList}>
+                    {recentConversations.map((conversation) => (
+                      <RecentConversationCard
+                        key={conversation.id}
+                        conversation={conversation}
+                      />
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.friendsSection}>
+                  <Text style={[styles.friendsSectionTitle, styles.otherFriendsTitle]}>
+                    Other friends
+                  </Text>
+                  <View style={styles.friendsList}>
+                    {otherFriends.map((friend) => (
+                      <OtherFriendCard key={friend.id} friend={friend} />
+                    ))}
+                  </View>
+                </View>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setSearchQuery("");
+                    setCurrentView("addFriends");
+                  }}
+                  style={styles.addFriendsButton}
+                >
+                  <Ionicons
+                    name="person-add-outline"
+                    size={20}
+                    color={colors.surface}
+                  />
+                  <Text style={styles.addFriendsLabel}>Add friends</Text>
+                </Pressable>
+              </>
+            )}
+          </ScrollView>
+        </>
+      )}
     </SafeAreaView>
   );
 }
@@ -266,6 +417,163 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     fontSize: 24,
     letterSpacing: -0.4,
+  },
+  addFriendsHeader: {
+    height: 42,
+    marginTop: 15,
+    marginHorizontal: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    shadowColor: "#173D33",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 1,
+  },
+  addFriendsHeading: {
+    color: colors.text,
+    fontFamily: fonts.bold,
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: -0.4,
+  },
+  addFriendsSubtitle: {
+    marginTop: 8,
+    marginHorizontal: 24,
+    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  searchBox: {
+    height: 56,
+    marginTop: 16,
+    marginHorizontal: 24,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 10,
+    paddingVertical: 0,
+    color: colors.text,
+    fontFamily: fonts.regular,
+    fontSize: 14,
+  },
+  suggestedList: {
+    flex: 1,
+    marginTop: 24,
+  },
+  suggestedListContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+  },
+  suggestedSectionTitle: {
+    color: colors.text,
+    fontFamily: fonts.semiBold,
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  suggestedSectionSubtitle: {
+    marginTop: 2,
+    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  suggestedCards: {
+    marginTop: 12,
+    gap: 10,
+  },
+  suggestedCard: {
+    minHeight: 86,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    shadowColor: "#173D33",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.045,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  suggestedAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  suggestedInitials: {
+    fontSize: 12,
+  },
+  suggestedContent: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 12,
+    marginRight: 10,
+  },
+  suggestedName: {
+    color: colors.text,
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+    lineHeight: 19,
+  },
+  suggestedLocation: {
+    marginTop: 1,
+    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  suggestedDetail: {
+    marginTop: 1,
+    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  addFriendAction: {
+    minWidth: 82,
+    height: 36,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 18,
+    backgroundColor: "#E8F1EE",
+  },
+  addFriendActionLabel: {
+    color: colors.link,
+    fontFamily: fonts.semiBold,
+    fontSize: 10,
+  },
+  pendingAction: {
+    backgroundColor: "#F0F4F2",
+  },
+  pendingLabel: {
+    color: colors.textMuted,
+  },
+  noSuggestions: {
+    paddingVertical: 20,
+    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
   },
   screenHeading: {
     marginTop: 20,
