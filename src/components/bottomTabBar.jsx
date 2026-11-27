@@ -33,6 +33,10 @@ const tabs = {
 
 export default function BottomTabBar({ state, navigation }) {
   const insets = useSafeAreaInsets();
+  const activeRoute = state.routes[state.index];
+
+  if (activeRoute?.params?.hideTabBar) return null;
+
   return (
     <View
       style={[styles.container, { paddingBottom: Math.max(insets.bottom, 10) }]}
@@ -100,7 +104,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: 12,
-    paddingHorizontal: 8,
     paddingHorizontal: 8,
   },
 

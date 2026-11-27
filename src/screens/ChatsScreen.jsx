@@ -262,7 +262,7 @@ function FriendRequestCard({ request, onAccept, onDecline, isBusy }) {
   );
 }
 
-export default function ChatsScreen() {
+export default function ChatsScreen({ navigation }) {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("Trips");
   const [currentView, setCurrentView] = useState("chats");
@@ -276,6 +276,16 @@ export default function ChatsScreen() {
   const [friendRequestsLoaded, setFriendRequestsLoaded] = useState(false);
   const [relationshipError, setRelationshipError] = useState("");
   const [searchError, setSearchError] = useState("");
+
+  const openSubview = (view) => {
+    setCurrentView(view);
+    navigation.setParams({ hideTabBar: true });
+  };
+
+  const returnToChats = () => {
+    setCurrentView("chats");
+    navigation.setParams({ hideTabBar: false });
+  };
 
   useEffect(() => {
     if (!user?.id) return undefined;
@@ -381,7 +391,10 @@ export default function ChatsScreen() {
   };
 
   return (
-    <SafeAreaView edges={["top"]} style={styles.safeArea}>
+    <SafeAreaView
+      edges={currentView === "chats" ? ["top"] : ["top", "bottom"]}
+      style={styles.safeArea}
+    >
       <View style={styles.brandHeader}>
         <Text style={styles.brand}>Tripromise</Text>
       </View>
@@ -392,7 +405,7 @@ export default function ChatsScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Back to friends"
-              onPress={() => setCurrentView("chats")}
+              onPress={returnToChats}
               style={styles.backButton}
             >
               <Ionicons name="chevron-back" size={22} color={colors.text} />
@@ -441,7 +454,7 @@ export default function ChatsScreen() {
                     traveler={traveler}
                     isSending={sendingIds.includes(traveler.id)}
                     onAddFriend={sendFriendRequest}
-                    onViewRequest={() => setCurrentView("friendRequests")}
+                    onViewRequest={() => openSubview("friendRequests")}
                   />
                 ))
               ) : (
@@ -458,7 +471,7 @@ export default function ChatsScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Back to friends"
-              onPress={() => setCurrentView("chats")}
+              onPress={returnToChats}
               style={styles.backButton}
             >
               <Ionicons name="chevron-back" size={22} color={colors.text} />
@@ -563,7 +576,7 @@ export default function ChatsScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Friend requests, ${friendRequests.length} waiting`}
-                  onPress={() => setCurrentView("friendRequests")}
+                  onPress={() => openSubview("friendRequests")}
                   style={styles.requestsBanner}
                 >
                   <View style={styles.requestsIcon}>
@@ -619,7 +632,7 @@ export default function ChatsScreen() {
                   accessibilityRole="button"
                   onPress={() => {
                     setSearchQuery("");
-                    setCurrentView("addFriends");
+                    openSubview("addFriends");
                   }}
                   style={styles.addFriendsButton}
                 >
