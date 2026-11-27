@@ -288,6 +288,16 @@ export default function ChatsScreen({ navigation }) {
   };
 
   useEffect(() => {
+    const unsubscribe = navigation.addListener("focus", () => {
+      setActiveTab("Trips");
+      setCurrentView("chats");
+      navigation.setParams({ hideTabBar: false });
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  useEffect(() => {
     if (!user?.id) return undefined;
 
     let isActive = true;
