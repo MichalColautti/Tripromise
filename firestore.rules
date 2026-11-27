@@ -1,0 +1,118 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function validFriendRequestShape(data) {
+      return data.keys().hasOnly([
+          'fromUid',
+          'toUid',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'fromUid',
+          'toUid',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]);
+    }
+
+    function canReadMissingFriendRequest(friendRequestId) {
+      return friendRequestId.matches('^' + request.auth.uid + '_.*$')
+        || friendRequestId.matches('^.*_' + request.auth.uid + '$');
+    }
+
+    match /userProfiles/{profileUid} {
+      allow get, list: if signedIn();
+
+      allow create: if signedIn()
+        && request.auth.uid == profileUid
+        && request.resource.data.uid == profileUid
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'name',
+          'nameSearch',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'uid',
+          'name',
+          'nameSearch',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.nameSearch is string
+        && request.resource.data.nameSearch.size() > 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if signedIn()
+        && request.auth.uid == profileUid
+        && request.resource.data.uid == profileUid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.nameSearch is string
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name',
+          'nameSearch',
+          'updatedAt'
+        ])
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    match /friendRequests/{friendRequestId} {
+      allow get: if signedIn()
+        && ((resource == null
+            && canReadMissingFriendRequest(friendRequestId))
+          || (resource != null
+            && (resource.data.fromUid == request.auth.uid
+              || resource.data.toUid == request.auth.uid)));
+
+      allow list: if signedIn()
+        && (resource.data.fromUid == request.auth.uid
+          || resource.data.toUid == request.auth.uid);
+
+      allow create: if signedIn()
+        && validFriendRequestShape(request.resource.data)
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.toUid != request.auth.uid
+        && request.resource.data.status == 'pending'
+        && friendRequestId == request.resource.data.fromUid + '_'
+          + request.resource.data.toUid
+        && exists(/databases/$(database)/documents/userProfiles/$(request.resource.data.toUid))
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if signedIn()
+        && friendRequestId == resource.data.fromUid + '_' + resource.data.toUid
+        && request.resource.data.fromUid == resource.data.fromUid
+        && request.resource.data.toUid == resource.data.toUid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'updatedAt'
+        ])
+        && (
+          (request.auth.uid == resource.data.toUid
+            && resource.data.status == 'pending'
+            && request.resource.data.status in ['accepted', 'declined'])
+          || (request.auth.uid == resource.data.fromUid
+            && resource.data.status == 'declined'
+            && request.resource.data.status == 'pending')
+        );
+    }
+  }
+}
